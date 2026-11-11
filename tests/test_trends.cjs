@@ -1,0 +1,11 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
+const source=fs.readFileSync(path.join(__dirname,'../static/app.js'),'utf8');const functions=source.slice(source.indexOf('function trendMetrics('),source.indexOf('function chart(){'));const ctx={Date,Map,Math};vm.createContext(ctx);vm.runInContext(functions,ctx);const build=ctx.buildTrendData;
+const logs=[{sport:'pullup',date:'2026-11-01',sets:[5,4],minutes:10},{sport:'pullup',date:'2026-11-01',sets:[6,3],minutes:8},{sport:'pullup',date:'2026-11-03',sets:[8,7],minutes:10},{sport:'running',date:'2026-11-02',distance:2,minutes:10},{sport:'running',date:'2026-11-02',distance:4,minutes:24},{sport:'badminton',date:'2026-11-02',minutes:60},{sport:'badminton',date:'2026-11-02',minutes:30}];
+let result=build(logs,[],'pullup','reps','all','2026-11-11');assert.equal(result.length,2);assert.equal(result[0].value,18);assert.equal(result[1].value,15);
+result=build(logs,[],'pullup','bestSet','all','2026-11-11');assert.equal(result[0].value,6);assert.equal(result[1].value,8);
+result=build(logs,[],'running','pace','all','2026-11-11');assert.equal(result[0].value,34/6);
+assert.equal(build(logs,[],'badminton','minutes','all','2026-11-11')[0].value,90);
+assert.equal(build(logs,[],'pushup','reps','all','2026-11-11').length,0);
+assert.equal(build([{sport:'running',date:'2026-10-12',distance:1,minutes:6},{sport:'running',date:'2026-10-13',distance:2,minutes:11}],[],'running','distance','30','2026-11-11').length,1);
+assert.equal(build(logs,[{date:'2026-11-11',weight:64.2}],'weight','weight','30','2026-11-11')[0].value,64.2);
+console.log('종목 추이 집계 7개 검사 통과');
