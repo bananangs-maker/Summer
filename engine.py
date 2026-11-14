@@ -2,6 +2,7 @@
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import math
+from collections import deque
 SPORTS = ('pullup','pushup','running','badminton')
 KST = ZoneInfo('Asia/Seoul')
 def today(): return datetime.now(KST).date()
@@ -37,6 +38,9 @@ def validate(s):
         if months[v[:7]]>2: raise ValueError('휴가는 한 달에 2회까지 사용할 수 있습니다.')
     notes=s.get('vacationNotes',{})
     if not isinstance(notes,dict) or any(not isinstance(v,str) or len(v)>200 for v in notes.values()): raise ValueError('휴가 메모는 200자 이내로 입력해주세요.')
+    regain_start=s.get('regainStart',today().isoformat())
+    if date.fromisoformat(regain_start)>today(): raise ValueError('되돌림 적용일은 오늘 이후일 수 없습니다.')
+    s['regainStart']=max(start.isoformat(),regain_start)
     ids=set()
     for x in s.get('logs',[]):
         if not isinstance(x,dict): raise ValueError('운동 기록을 확인해주세요.')
@@ -87,6 +91,8 @@ def analyze(s,now=None,weather=None):
     by={}
     for x in s.get('logs',[]): by.setdefault(x['date'],[]).append(x)
     w=p['weight']; xp=0; total=0; series=[]; details=[]; clear_seen=set(); training_days=0
+    regain_start=date.fromisoformat(s.get('regainStart',end.isoformat()))
+    exercise_rates=deque(maxlen=28); regain_total=0.0
     d=start
     while d<=end:
         rows=by.get(d.isoformat(),[]); present={x['sport'] for x in rows}; body=d.weekday() in (0,2,4,6)
@@ -115,13 +121,24 @@ def analyze(s,now=None,weather=None):
                 clear_seen.add(key)
                 if fulfilled: score+=20
         xp=max(0,xp+score); total+=daykcal
-        w=max(1,w-daykcal/7700)
+        before=w
+        after_exercise=max(1,before-daykcal/7700)
+        missed_fraction=(len({'pullup','pushup'}-present)/2) if body else (0 if fulfilled else 1)
+        # A game rule, independent of repetitions, distance and manual clear.
+        rate=sum(exercise_rates)/len(exercise_rates) if exercise_rates else 0
+        eligible=d>=regain_start and not pending and not exempt and not unknown
+        requested=rate*before*missed_fraction/7700 if eligible else 0
+        regain=min(max(0,p['weight']-after_exercise),requested)
+        w=min(p['weight'],after_exercise+regain)
+        regain_total+=regain
+        netkcal=daykcal-regain*7700
+        if daykcal>0: exercise_rates.append(daykcal/max(before,1))
         if rows: training_days+=1
-        series.append({'date':d.isoformat(),'weight':round(w,3),'kcal':round(daykcal,1),'xp':xp,'score':score,'complete':fulfilled,'pending':pending,'vacation':vacation,'weatherExempt':bool(not body and wet),'weatherPending':unknown,'wet':wet})
+        series.append({'date':d.isoformat(),'weight':round(w,3),'kcal':round(daykcal,1),'xp':xp,'score':score,'complete':fulfilled,'pending':pending,'vacation':vacation,'weatherExempt':bool(not body and wet),'weatherPending':unknown,'wet':wet,'regain':round(regain,6),'netKcal':round(netkcal,6),'referenceKcal':round(rate*before,2),'missedFraction':missed_fraction})
         details.extend(enriched); d+=timedelta(days=1)
     completed=[x for x in series if x['date']<=cutoff.isoformat()][-28:]
     # Coefficient scales energy with projected bodyweight as it falls.
-    coeff=sum(x['kcal']/max(x['weight'],1) for x in completed)/len(completed) if completed else 0
+    coeff=sum(x['netKcal']/max(x['weight'],1) for x in completed)/len(completed) if completed else 0
     def project(factor=1):
         if w<=p['target']: return 0
         if coeff<=0: return None
@@ -138,4 +155,4 @@ def analyze(s,now=None,weather=None):
     if clear_seen: badges.append('첫 단계 클리어')
     if sum(x.get('distance',0) for x in s.get('logs',[]) if x['sport']=='running')>=10: badges.append('누적 러닝 10km')
     if set(SPORTS)<={x['sport'] for x in s.get('logs',[])}: badges.append('네 종목 플레이어')
-    return {'weight':round(w,2),'lost':round(p['weight']-w,2),'remaining':round(max(0,w-p['target']),2),'progress':round(min(100,max(0,(p['weight']-w)/(p['weight']-p['target'])*100)),1),'xp':xp,'vacationsRemaining':2-sum(v.startswith(end.isoformat()[:7]) for v in s.get('vacations',[])),'kcal':round(total),'series':series,'details':details,'days':days,'eta':eta,'range':[project(1.3),project(.7)] if len(completed)>=7 else None,'sampleDays':len(completed),'badges':badges,'trainingDays':training_days}
+    return {'weight':round(w,2),'regainTotal':round(regain_total,6),'regainStart':regain_start.isoformat(),'averageNetKcal':round(sum(x['netKcal'] for x in completed)/len(completed),2) if completed else 0,'lost':round(p['weight']-w,2),'remaining':round(max(0,w-p['target']),2),'progress':round(min(100,max(0,(p['weight']-w)/(p['weight']-p['target'])*100)),1),'xp':xp,'vacationsRemaining':2-sum(v.startswith(end.isoformat()[:7]) for v in s.get('vacations',[])),'kcal':round(total),'series':series,'details':details,'days':days,'eta':eta,'range':[project(1.3),project(.7)] if len(completed)>=7 else None,'sampleDays':len(completed),'badges':badges,'trainingDays':training_days}

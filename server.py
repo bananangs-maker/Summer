@@ -1,7 +1,7 @@
 import json, os, mimetypes
 from pathlib import Path
 from wsgiref.simple_server import make_server
-from engine import validate, analyze
+from engine import validate, analyze, today
 from storage import Store, Conflict
 from weather import get_weather
 ROOT=Path(__file__).parent
@@ -19,6 +19,13 @@ def application(env,start):
         if path in ('/api/state','/api/export'):
             if method=='GET':
                 rev,s = store.read()
+                # Persist one activation date: upgrades never add penalties to older days.
+                if s.get('profile') and not s.get('regainStart'):
+                    migrated={**s,'regainStart':max(s['profile']['start'],today().isoformat())}
+                    try:
+                        rev=store.write(rev,migrated);s=migrated
+                    except Conflict:
+                        rev,s=store.read()
                 weather = get_weather(store,s['profile']['start']) if s.get('profile') else {}
                 return reply('200 OK',{'revision':rev,'state':s,'summary':analyze(s,weather=weather), 'weather':weather})
             if method=='PUT' and path=='/api/state':
