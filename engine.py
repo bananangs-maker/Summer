@@ -150,9 +150,6 @@ def analyze(s,now=None,weather=None):
     days=project() if len(completed)>=7 else None
     eta=(end+timedelta(days=days)).isoformat() if days is not None else None
     badges=[]
-    if training_days: badges.append('첫 기록')
     if training_days>=7: badges.append('운동 7일')
-    if clear_seen: badges.append('첫 단계 클리어')
     if sum(x.get('distance',0) for x in s.get('logs',[]) if x['sport']=='running')>=10: badges.append('누적 러닝 10km')
-    if set(SPORTS)<={x['sport'] for x in s.get('logs',[])}: badges.append('네 종목 플레이어')
     return {'weight':round(w,2),'regainTotal':round(regain_total,6),'regainStart':regain_start.isoformat(),'averageNetKcal':round(sum(x['netKcal'] for x in completed)/len(completed),2) if completed else 0,'lost':round(p['weight']-w,2),'remaining':round(max(0,w-p['target']),2),'progress':round(min(100,max(0,(p['weight']-w)/(p['weight']-p['target'])*100)),1),'xp':xp,'vacationsRemaining':2-sum(v.startswith(end.isoformat()[:7]) for v in s.get('vacations',[])),'kcal':round(total),'series':series,'details':details,'days':days,'eta':eta,'range':[project(1.3),project(.7)] if len(completed)>=7 else None,'sampleDays':len(completed),'badges':badges,'trainingDays':training_days}
