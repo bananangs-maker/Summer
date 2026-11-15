@@ -23,7 +23,8 @@ function theme(dark){document.body.classList.toggle('dark',dark);try{localStorag
 try{theme(localStorage.getItem('motion-theme')?localStorage.getItem('motion-theme')==='dark':matchMedia('(prefers-color-scheme: dark)').matches);}catch{}
 $('theme').onclick=()=>theme(!document.body.classList.contains('dark'));
 async function request(url,opts={}){const r=await fetch(url,opts);let p;try{p=await r.json();}catch{throw Error('서버 응답을 읽을 수 없습니다.');}if(!r.ok)throw Error(p.error||'서버 연결에 실패했습니다.');return p;}
-function accept(p){weatherData=p.weather||{};data=p.state;revision=p.revision;summary=p.summary;render();$('connection').textContent='● 서버 저장 연결됨';}
+window.motionSnapshot=()=>({logs:structuredClone(data.logs)});
+function accept(p){weatherData=p.weather||{};data=p.state;revision=p.revision;summary=p.summary;render();window.dispatchEvent(new CustomEvent('motion:updated',{detail:{logs:data.logs}}));$('connection').textContent='● 서버 저장 연결됨';}
 async function save(next){if(busy)throw Error('저장 중입니다. 잠시 기다려주세요.');busy=true;document.querySelectorAll('button[type="submit"],#saveLog').forEach(b=>b.disabled=true);try{const p=await request('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({revision,state:next})});accept(p);notice('저장했습니다.');}finally{busy=false;document.querySelectorAll('button[type="submit"],#saveLog').forEach(b=>b.disabled=false);}}
 function copy(){return structuredClone(data);}
 function opt(vals,selected){return vals.map(([v,t])=>`<option value="${v}" ${String(v)===String(selected)?'selected':''}>${t}</option>`).join('');}
