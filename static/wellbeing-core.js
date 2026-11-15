@@ -41,6 +41,7 @@ function validate(h,now=Date.now()){
   if(s.context.medAt&&Date.parse(s.context.medAt)>Date.parse(s.startedAt))fail();
   for(const t of s.trials){if(!['attention','immediate','delayed','backward'].includes(t.task)||!Number.isFinite(t.at)||t.at<0||t.at>3600000)fail();if(t.task==='attention'){if(!['anticipation','response','omission'].includes(t.kind)||!Number.isFinite(t.rt)||t.rt<0||t.rt>20000)fail();}else if(t.task==='backward'){if(typeof t.target!=='string'||!/^\d{2,7}$/.test(t.target)||typeof t.answer!=='string'||!/^\d{0,7}$/.test(t.answer)||t.length!==t.target.length||!Number.isFinite(t.rt)||t.rt<0||t.rt>20000)fail();}else if(!Number.isInteger(t.target)||t.target<0||t.target>8||!Number.isInteger(t.answer)||t.answer< -1||t.answer>8||!Number.isInteger(t.symbol)||t.symbol<0||t.symbol>5||!Number.isFinite(t.rt)||t.rt<0||t.rt>20000)fail();}
  }
+ if(h.learning!==undefined){const L=typeof module!=='undefined'&&module.exports?require('./learning-core.js'):root.MotionLearning;if(!L)fail();L.validate(h.learning,dateKST(now));}
  return h;
 }
 const api={VERSION,DAY,dateKST,median,score,comparable,eligible,schedule,sleepMinutes,wakeDeviation,validate};

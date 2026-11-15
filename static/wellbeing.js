@@ -9,14 +9,15 @@ const kiso=v=>v+':00+09:00';
 const getHealth=()=>{const s=localStorage.getItem(KEY);return s?C.validate(JSON.parse(s)):empty();};
 try{health=getHealth();localStorage.setItem(KEY+'-probe','1');localStorage.removeItem(KEY+'-probe');}catch(e){storageOK=false;corrupt=true;}
 function tell(s){$('wbMessage').textContent=s;$('wbMessage').hidden=false;}
-function save(next){if(!storageOK)throw Error('브라우저 저장이 불가능하거나 기존 기록을 읽지 못했습니다. 원본 백업을 먼저 내려받아주세요.');const current=getHealth();if((current.revision||0)!==(health.revision||0)){health=current;render();throw Error('다른 탭에서 기록이 변경됐습니다. 다시 입력해주세요.');}next.revision=(health.revision||0)+1;C.validate(next);localStorage.setItem(KEY,JSON.stringify(next));health=next;render();}
+function save(next){if(!storageOK)throw Error('브라우저 저장이 불가능하거나 기존 기록을 읽지 못했습니다. 원본 백업을 먼저 내려받아주세요.');const current=getHealth();if((current.revision||0)!==(health.revision||0)){health=current;render();throw Error('다른 탭에서 기록이 변경됐습니다. 다시 입력해주세요.');}next.revision=(health.revision||0)+1;C.validate(next);localStorage.setItem(KEY,JSON.stringify(next));health=next;render();window.dispatchEvent(new Event('motion:healthupdated'));}
 const copy=()=>JSON.parse(JSON.stringify(health));
+window.MotionWellbeing={readLearning:()=>JSON.parse(JSON.stringify(health.learning||window.MotionLearning.empty())),writeLearning:learning=>{const n=copy();n.learning=learning;save(n);},canSave:()=>storageOK};
 function download(text,name,type='application/json'){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);}
 function nav(){document.querySelectorAll('.page').forEach(x=>x.hidden=x.id!=='mind');document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('selected',b.dataset.tab==='mind'));render();window.scrollTo({top:0});}
-const nb=document.createElement('button');nb.dataset.tab='mind';nb.textContent='마음·학습';nb.onclick=nav;document.querySelector('nav').insertBefore(nb,document.querySelector('[data-tab="history"]'));
+const nb=document.createElement('button');nb.dataset.tab='mind';nb.textContent='인지·수면';nb.onclick=nav;document.querySelector('nav').insertBefore(nb,document.querySelector('[data-tab="history"]'));
 $('home').insertAdjacentHTML('afterbegin','<article class="panel wb-summary" id="wbHome"><div><strong>오늘의 작은 움직임</strong><p id="wbHomeText" class="muted"></p></div><button id="wbGoMind">학습·수면·인지 기록 →</button></article>');$('wbGoMind').onclick=nav;
 const section=document.createElement('section');section.id='mind';section.className='page';section.hidden=true;section.innerHTML=`
-<div class="heading"><h1>마음·학습</h1><span class="date">${today()}</span></div>
+<div class="heading"><h1>인지·수면</h1><span class="date">${today()}</span></div>
 <div class="wb-print"><h2>MOTION 개인 관찰 기록</h2><p>자체 제작 과제의 수행 기록 · 의료진 검토용 참고자료 · 임상적 타당도 미검증</p></div>
 <p class="wb-local">학습·수면·복약·검사 기록은 이 브라우저에만 저장됩니다. 서버에는 전송하지 않습니다. 기기 변경·브라우저 데이터 삭제에 대비해 별도 백업해주세요.</p>
 <p id="wbMessage" role="status" hidden></p>
