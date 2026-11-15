@@ -59,3 +59,13 @@ class DumbbellPreviewParity(unittest.TestCase):
    for a,b in zip(py['series'],js['series']):
     for key in ('complete','score','dbRequired','dbDone','weatherExempt','weatherPending','missingDumbbells'):self.assertEqual(a[key],b[key],(mode,key,a,b))
     for key in ('weight','regain','netKcal'):self.assertAlmostEqual(a[key],b[key],places=5,msg=str((mode,key)))
+
+class DumbbellBaselineTests(unittest.TestCase):
+ def test_baselines_roundtrip_and_do_not_record_workout(self):
+  s=DumbbellTests().state();s['dumbbellLoads']={k:2.5 for k in DUMBBELLS};q=copy.deepcopy(s);q.pop('dumbbellLoads')
+  validate(s);self.assertEqual(s['logs'],[])
+  now=datetime(2026,11,4,5,tzinfo=KST);self.assertEqual(analyze(s,now),analyze(q,now))
+ def test_invalid_baselines(self):
+  for loads in (None,[],{'hammer_curl':0},{'hammer_curl':True},{'hammer_curl':float('nan')},{'unknown':5}):
+   s=DumbbellTests().state();s['dumbbellLoads']=loads
+   with self.assertRaises(ValueError):validate(s)

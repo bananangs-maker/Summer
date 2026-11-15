@@ -54,6 +54,10 @@ def validate(s):
         if c['min']>c['max']: raise ValueError('최소 목표 횟수는 최대 횟수 이하여야 합니다.')
         inc=c.get('increment')
         if isinstance(inc,bool) or not isinstance(inc,(int,float)) or not math.isfinite(inc) or not 0<inc<=20: raise ValueError('덤벨 증량 단위를 확인해주세요.')
+    loads=s.get('dumbbellLoads',{})
+    if not isinstance(loads,dict): raise ValueError('덤벨 기준 중량을 확인해주세요.')
+    for key,v in loads.items():
+        if key not in DUMBBELLS or isinstance(v,bool) or not isinstance(v,(int,float)) or not math.isfinite(v) or not 0<v<=200: raise ValueError('기준 중량은 덤벨 한 개 기준 0 초과~200kg로 입력해주세요.')
     ids=set()
     for x in s.get('logs',[]):
         if not isinstance(x,dict): raise ValueError('운동 기록을 확인해주세요.')
