@@ -3,7 +3,8 @@ from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import math
 from collections import deque
-SPORTS = ('pullup','pushup','running','badminton')
+DUMBBELLS = ('hammer_curl','dumbbell_curl','dumbbell_row','reverse_fly','shoulder_press','lateral_raise')
+SPORTS = ('pullup','pushup','running','badminton') + DUMBBELLS
 KST = ZoneInfo('Asia/Seoul')
 def today(): return datetime.now(KST).date()
 def settled_through(now=None):
@@ -41,6 +42,18 @@ def validate(s):
     regain_start=s.get('regainStart',today().isoformat())
     if date.fromisoformat(regain_start)>today(): raise ValueError('되돌림 적용일은 오늘 이후일 수 없습니다.')
     s['regainStart']=max(start.isoformat(),regain_start)
+    db_start=s.get('dumbbellStart',today().isoformat())
+    if date.fromisoformat(db_start)>today(): raise ValueError('덤벨 적용일은 오늘 이후일 수 없습니다.')
+    s['dumbbellStart']=max(start.isoformat(),db_start)
+    config=s.get('dumbbellConfig',{})
+    if not isinstance(config,dict): raise ValueError('덤벨 루틴 설정을 확인해주세요.')
+    for key,c in config.items():
+        if key not in DUMBBELLS or not isinstance(c,dict): raise ValueError('덤벨 종목 설정을 확인해주세요.')
+        for k,lo,hi in [('sets',1,10),('min',1,100),('max',1,100),('rest',15,300)]:
+            if type(c.get(k))!=int or not lo<=c[k]<=hi: raise ValueError('덤벨 세트·목표 횟수·휴식을 확인해주세요.')
+        if c['min']>c['max']: raise ValueError('최소 목표 횟수는 최대 횟수 이하여야 합니다.')
+        inc=c.get('increment')
+        if isinstance(inc,bool) or not isinstance(inc,(int,float)) or not math.isfinite(inc) or not 0<inc<=20: raise ValueError('덤벨 증량 단위를 확인해주세요.')
     ids=set()
     for x in s.get('logs',[]):
         if not isinstance(x,dict): raise ValueError('운동 기록을 확인해주세요.')
@@ -56,6 +69,12 @@ def validate(s):
         sets=x.get('sets',[])
         if not isinstance(sets,list) or len(sets)>30 or any(type(v)!=int or not 0<=v<=2000 for v in sets): raise ValueError('세트별 횟수를 확인해주세요.')
         if x['sport'] in ('pullup','pushup') and sum(sets)<=0: raise ValueError('실제 수행한 횟수를 입력해주세요.')
+        if x['sport'] in DUMBBELLS:
+            load=x.get('load')
+            if isinstance(load,bool) or not isinstance(load,(int,float)) or not math.isfinite(load) or not 0<load<=200: raise ValueError('덤벨 한 개의 중량을 0 초과~200kg로 입력해주세요.')
+            if sum(sets)<=0: raise ValueError('덤벨 실제 수행 횟수를 입력해주세요.')
+            if x.get('execution') not in ('together','per_side'): raise ValueError('덤벨 횟수 기준을 선택해주세요.')
+            if x.get('effort','moderate')=='match': raise ValueError('덤벨 강도는 보통 또는 높음으로 선택해주세요.')
         if x['sport'] in ('running','badminton') and x.get('minutes',0)<=0: raise ValueError('유산소 운동 시간을 입력해주세요.')
         if x['sport']=='running' and x.get('distance',0)<=0: raise ValueError('러닝 거리를 입력해주세요.')
         if x.get('minutes',0) and x.get('active',0)>x.get('minutes',0): raise ValueError('실제 운동 시간은 총 소요 시간보다 클 수 없습니다.')
@@ -74,6 +93,13 @@ def energy(x,w):
         met=7.5 if x.get('effort')=='hard' else 3.8
         # Rest is baseline, not credited as vigorous exercise.
         net=max(0,met-1.3)*w*3.5/200*active
+    elif sport in DUMBBELLS:
+        # Broad resistance-training proxy; no energy multiplier for external kg.
+        active=x.get('active',0) or sum(x.get('sets',[]))*3/60*(2 if x.get('execution')=='per_side' else 1)
+        estimated=not bool(x.get('active',0))
+        if mins: active=min(active,mins)
+        met=6.0 if x.get('effort')=='hard' else 3.5
+        net=(met-1.3)*w*3.5/200*active
     elif sport=='badminton':
         met={'moderate':5.5,'hard':7,'match':9}[x.get('effort','moderate')]
         net=(met-1.3)*w*3.5/200*mins
@@ -109,6 +135,18 @@ def analyze(s,now=None,weather=None):
         exempt=vacation or (not body and wet)
         if (exempt or unknown) and score<0: score=0
         if vacation and not fulfilled: score=50*len(present&{'pullup','pushup'})+25*len(present&{'running','badminton'})
+        db_required=bool(not body and s.get('dumbbellStart') and d.isoformat()>=s['dumbbellStart'])
+        db_done=len(set(DUMBBELLS)&present)
+        missing_db=[key for key in DUMBBELLS if key not in present]
+        if db_required:
+            cardio=bool(present&{'running','badminton'})
+            unknown=bool(not cardio and not vacation and not wet and not (wx and wx.get('complete')))
+            fulfilled=db_done==6 and (cardio or wet)
+            # Seven equal obligations. Weather waives only the cardio slot.
+            missing_slots=6-db_done+(1 if not cardio and not wet and not unknown else 0)
+            score=100+25*max(0,len(present&{'running','badminton'})-1) if fulfilled else -round(80*missing_slots/7)
+            exempt=vacation
+            if vacation and not fulfilled: score=50*len(present&{'pullup','pushup'})+25*len(present&{'running','badminton'})
         # No penalty before the next 04:00 settlement.
         pending=d>cutoff
         if pending and score<0: score=0
@@ -123,10 +161,10 @@ def analyze(s,now=None,weather=None):
         xp=max(0,xp+score); total+=daykcal
         before=w
         after_exercise=max(1,before-daykcal/7700)
-        missed_fraction=(len({'pullup','pushup'}-present)/2) if body else (0 if fulfilled else 1)
+        missed_fraction=(missing_slots/7) if db_required else ((len({'pullup','pushup'}-present)/2) if body else (0 if fulfilled else 1))
         # A game rule, independent of repetitions, distance and manual clear.
         rate=sum(exercise_rates)/len(exercise_rates) if exercise_rates else 0
-        eligible=d>=regain_start and not pending and not exempt and not unknown
+        eligible=d>=regain_start and not pending and not exempt and (db_required or not unknown)
         requested=rate*before*missed_fraction/7700 if eligible else 0
         regain=min(max(0,p['weight']-after_exercise),requested)
         w=min(p['weight'],after_exercise+regain)
@@ -134,7 +172,7 @@ def analyze(s,now=None,weather=None):
         netkcal=daykcal-regain*7700
         if daykcal>0: exercise_rates.append(daykcal/max(before,1))
         if rows: training_days+=1
-        series.append({'date':d.isoformat(),'weight':round(w,3),'kcal':round(daykcal,1),'xp':xp,'score':score,'complete':fulfilled,'pending':pending,'vacation':vacation,'weatherExempt':bool(not body and wet),'weatherPending':unknown,'wet':wet,'regain':round(regain,6),'netKcal':round(netkcal,6),'referenceKcal':round(rate*before,2),'missedFraction':missed_fraction})
+        series.append({'date':d.isoformat(),'weight':round(w,3),'kcal':round(daykcal,1),'xp':xp,'score':score,'complete':fulfilled,'pending':pending,'vacation':vacation,'weatherExempt':bool(not body and wet),'weatherPending':unknown,'wet':wet,'regain':round(regain,6),'netKcal':round(netkcal,6),'referenceKcal':round(rate*before,2),'missedFraction':missed_fraction,'dbRequired':db_required,'dbDone':db_done,'missingDumbbells':missing_db if db_required else []})
         details.extend(enriched); d+=timedelta(days=1)
     completed=[x for x in series if x['date']<=cutoff.isoformat()][-28:]
     # Coefficient scales energy with projected bodyweight as it falls.

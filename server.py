@@ -20,8 +20,8 @@ def application(env,start):
             if method=='GET':
                 rev,s = store.read()
                 # Persist one activation date: upgrades never add penalties to older days.
-                if s.get('profile') and not s.get('regainStart'):
-                    migrated={**s,'regainStart':max(s['profile']['start'],today().isoformat())}
+                if s.get('profile') and (not s.get('regainStart') or not s.get('dumbbellStart')):
+                    migrated={**s,'regainStart':s.get('regainStart') or max(s['profile']['start'],today().isoformat()),'dumbbellStart':s.get('dumbbellStart') or max(s['profile']['start'],today().isoformat())}
                     try:
                         rev=store.write(rev,migrated);s=migrated
                     except Conflict:

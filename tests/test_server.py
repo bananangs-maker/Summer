@@ -23,7 +23,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.call('PUT',{'revision':0,'state':s})[0],'409 Conflict')
         self.server=importlib.reload(self.server)
         self.server.get_weather=lambda *a,**k:{}
-        self.assertEqual(self.call()[1]['state'],{**s,'regainStart':today().isoformat()})
+        self.assertEqual(self.call()[1]['state'],{**s,'regainStart':today().isoformat(),'dumbbellStart':today().isoformat()})
     def test_old_state_activation_saved_once(self):
         from engine import today
         s={'profile':{'weight':65,'target':55,'start':'2026-11-01'},'logs':[],'routines':{}}
@@ -31,9 +31,20 @@ class ServerTests(unittest.TestCase):
         self.server.store.write(0,s)
         _,a=self.call();_,b=self.call()
         self.assertEqual(a['state']['regainStart'],today().isoformat())
+        self.assertEqual(a['state']['dumbbellStart'],today().isoformat())
         self.assertEqual(a['revision'],b['revision'])
         self.assertEqual(a['state']['logs'],s['logs'])
         self.assertEqual(a['summary']['regainTotal'],0)
+    def test_dumbbell_batch_atomic(self):
+        from engine import DUMBBELLS,today
+        d=today().isoformat()
+        s={'profile':{'weight':65,'target':55,'start':d},'logs':[{'id':k,'sport':k,'date':d,'sets':[10],'load':5,'execution':'together'} for k in DUMBBELLS],'routines':{}}
+        status,p=self.call('PUT',{'revision':0,'state':s})
+        self.assertEqual(status,'200 OK');self.assertEqual(len(p['state']['logs']),6)
+        s['logs'][0]['load']=0
+        self.assertEqual(self.call('PUT',{'revision':p['revision'],'state':s})[0],'400 Bad Request')
+        self.assertEqual(self.call()[1]['state']['logs'][0]['load'],5)
+
     def test_cross_origin_rejected(self):
         self.assertEqual(self.call('PUT',{},origin='https://other.site')[0],'403 Forbidden')
     def test_bad_request_no_overwrite(self):
